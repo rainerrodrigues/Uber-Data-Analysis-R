@@ -1,0 +1,155 @@
+---
+title: "Uber_Data_Analysis"
+output: html_document
+date: "2024-11-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```         
+library(tidyverse)
+uber_data <- read.csv("uber_data.csv")
+```
+
+```         
+uber_data <- uber_data %>%
+  mutate(StartDate = as.POSIXct(StartDate, format = "%m/%d/%Y %H:%M"),
+         StopDate = as.POSIXct(StopDate, format = "%m/%d/%Y %H:%M")) %>%
+  filter(!is.na(StartDate) & !is.na(Miles))  # Remove rows with missing dates or miles
+```
+
+```{r uber data}
+uber_data <- uber_data |>
+  filter(!is.na(CATEGORY) & CATEGORY!="")
+
+uber_data |>
+  group_by(CATEGORY) |>
+  ggplot(aes(CATEGORY,n,fill = PURPOSE)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Distribution of Trip Categories")
+
+uber_data |>
+  group_by(CATEGORY) |>
+  ggplot(aes(CATEGORY,n,fill = PURPOSE)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Distribution of Trip Categories by Purpose")
+```
+
+```{Most Common Trip Purposes}
+uber_data |> 
+    filter(!is.na(PURPOSE) & PURPOSE!='Unknown' & PURPOSE!='Commute' & PURPOSE!='Charity ($)') |>
+    count(PURPOSE) |>
+    ggplot(aes(x = reorder(PURPOSE, -n),n,fill = PURPOSE)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = "Most Common Trip Purposes") +
+    xlab("Purpose") +
+    ylab("Number of Trips") +
+    coord_flip()
+```
+
+```{Distribution of Trips by Miles}
+uber_data |>
+  filter(MILES <= 100) |>
+  ggplot(uber_data, aes(x = MILES)) +
+  geom_histogram(bins = 75, fill = "blue", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Distribution of Trip Distances (Miles)", x = "Miles", y = "Frequency")
+
+uber_data |>
+    filter(!is.na(PURPOSE) & PURPOSE!='Unknown' & PURPOSE!='Commute' & PURPOSE!='Charity ($)' & MILES<=100 & Duration<=100) |>
+    ggplot(aes(y = Duration,x = MILES,color = CATEGORY)) +
+    geom_point() +
+    theme_minimal()
+
+uber_data |>
+    filter(!is.na(PURPOSE) & PURPOSE!='Unknown' & PURPOSE!='Commute' & PURPOSE!='Charity ($)' & MILES<=100 & Duration<=100) |>
+    ggplot(aes(y = Duration,x = MILES,color = PURPOSE)) +
+    geom_point() +
+    theme_minimal()
+
+```
+
+```{Average Trip Distance By Category}
+
+uber_data |>
+    group_by(CATEGORY) |>
+    summarise(avg_miles = mean(MILES, na.rm = TRUE)) |>
+    ggplot(aes(x = CATEGORY,y = avg_miles, fill = CATEGORY)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    labs(title = "Average Trip Distance by Category",x = "Category",y = "Average Miles")
+```
+
+```{r}         
+uber_data |> 
+    mutate(Weekday = weekdays(START_DATE)) |>
+    filter(Weekday!= "NA") |>
+    count(Weekday) |>
+    ggplot(aes(x = reorder(Weekday,-n),y = n)) +
+    geom_bar(stat = "identity",fill = "purple") +
+    theme_minimal() +
+    labs(title = "Ride Frequency by Day of the Week", x= "Day",y = "Number of Rides")
+```
+
+```{r}         
+library(caret)
+set.seed(42)
+uber_data <- uber_data |>
+  mutate(Duration = as.numeric(Duration))
+# Create a linear model to predict trip duration based on miles, category, and purpose
+model <- train(Duration ~ MILES + CATEGORY + PURPOSE, data = uber_data, method = "lm", na.action = na.exclude)
+summary(model)
+
+model_miles <- train(Miles ~ Category + Purpose, data = uber_data, method = "rf", na.action = na.exclude)
+summary(model_miles)
+```
+
+```         
+library(shiny)
+# Define UI and server for a basic dashboard to visualize Uber ride patterns
+ui <- fluidPage(
+  titlePanel("Uber Ride Data Dashboard"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("category", "Choose Category:", choices = unique(uber_data$Category)),
+      sliderInput("miles", "Miles:", min = 0, max = max(uber_data$Miles), value = c(0, 20))
+    ),
+    mainPanel(
+      plotOutput("ridePlot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$ridePlot <- renderPlot({
+    filtered_data <- uber_data %>%
+      filter(Category == input$category & Miles >= input$miles[1] & Miles <= input$miles[2])
+    ggplot(filtered_data, aes(x = StartDate, y = Miles)) +
+      geom_point() +
+      theme_minimal()
+  })
+}
+
+shinyApp(ui, server)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
